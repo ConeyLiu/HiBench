@@ -4,7 +4,7 @@ jdk:
   - oraclejdk8
 cache:
   directories:
-  -$HOME/.m2
+  - $HOME/.m2
 install: 
   - cd src
 before_script:

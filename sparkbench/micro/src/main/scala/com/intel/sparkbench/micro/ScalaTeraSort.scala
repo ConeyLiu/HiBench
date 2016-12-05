@@ -54,12 +54,43 @@ object ScalaTeraSort {
       .getOrElse((parallel / 2).toString).toInt
 
     val partitioner = new BaseRangePartitioner(partitions = reducer, rdd = data)
-    val ordered_data = new ConfigurableOrderedRDDFunctions[Array[Byte], Array[Byte], (Array[Byte], Array[Byte])](data)
-    val sorted_data = ordered_data.sortByKeyWithPartitioner(partitioner = partitioner).map{case (k, v)=>(new Text(k), new Text(v))}
 
-    sorted_data.saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
-    //io.save(args(1), sorted_data)
+    val partitioned_sorted_rdd = data.map(kv => (partitioner.getPartition(kv._1), (kv._1, kv._2)))
+      .mapPartitions{ iterator =>
+        iterator.toSeq
+                .sortWith((r1, r2) => partitionKeyCompare((r1._1, r1._2._1), (r2._1, r2._2._1)) < 0)
+                .toIterator
+      }
+
+    val ordered_rdd = new TeraSortPairRDDFunctions(partitioned_sorted_rdd)
+
+    val sorted_rdd = ordered_rdd.groupByKey(new HashPartitioner(partitioner.numPartitions)).flatMap{ tuple =>
+        val value = tuple._2
+        val sortedIterator = value.toSeq.sortWith { (v1, v2) =>
+          keyCompare(v1._1, v2._2) < 0
+        }
+        sortedIterator
+    }.map{case (k, v) => (new Text(k), new Text(v))}
+
+    sorted_rdd.saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
+
 
     sc.stop()
+  }
+
+
+  def keyCompare(a: Array[Byte], b: Array[Byte]): Int = {
+    val bytesWritable1 = new BytesWritable(a)
+    val bytesWritable2 = new BytesWritable(b)
+    if (bytesWritable1.compareTo(bytesWritable2) < 0) -1 else 1
+  }
+
+  def partitionKeyCompare(a: (Int, Array[Byte]), b: (Int, Array[Byte])): Int = {
+    val partitionDiff = a._1 - b._1
+    if (partitionDiff != 0) {
+      partitionDiff
+    } else {
+      keyCompare(a._2, b._2)
+    }
   }
 }

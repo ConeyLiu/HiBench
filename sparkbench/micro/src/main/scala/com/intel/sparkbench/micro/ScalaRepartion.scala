@@ -35,13 +35,17 @@ object ScalaRepartion {
     val sc = new SparkContext(sparkConf)
 
     //val file = io.load[String](args(0), Some("Text"))
-    val data = sc.newAPIHadoopFile[Text, Text, TeraInputFormat](args(0))
+    val data = sc.newAPIHadoopFile[Text, Text, TeraInputFormat](args(0)).map {
+      case (k,v) => (k.copyBytes, v.copyBytes)
+    }
 
     val parallel = sc.getConf.getInt("spark.default.parallelism", sc.defaultParallelism)
     val reducer  = IOCommon.getProperty("hibench.default.shuffle.parallelism")
       .getOrElse((parallel / 2).toString).toInt
 
-    data.repartition(reducer).saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
+    data.repartition(reducer)
+      .map{ case (k, v) => (new Text(k), new Text(v))}
+      .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
 
     sc.stop()
   }

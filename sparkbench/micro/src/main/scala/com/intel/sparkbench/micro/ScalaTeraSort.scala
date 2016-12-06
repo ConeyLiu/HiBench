@@ -107,13 +107,18 @@ object ScalaTeraSort {
         kvIterator
       }
 
-    val ordered_rdd = new TeraSortPairRDDFunctions(partitioned_sorted_rdd)
-
-    val grouped_rdd = ordered_rdd.groupByKey(partitioner)
-
-    grouped_rdd.flatMapValues(_.toIterator)
-      .map { case (k, v) => (new Text(k), new Text(v))}
+    partitioned_sorted_rdd.sortByKeyWithPartitioner(partitioner)
+      .map{ case (k, v) => (new Text(k), new Text(v))}
       .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
+
+    //val ordered_rdd = new TeraSortPairRDDFunctions(partitioned_sorted_rdd)
+
+    //val grouped_rdd = ordered_rdd.groupByKey(partitioner)
+
+//    grouped_rdd.flatMapValues(_.toIterator)
+//      .map { case (k, v) => (new Text(k), new Text(v))}
+//      .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
+
 
     sc.stop()
   }

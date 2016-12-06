@@ -77,13 +77,14 @@ object ScalaTeraSort {
             arr += kv
         }
 
-        hashmap.foreach{ case (pid, kv) =>
-            kv.sortWith((r1, r2) => keyCompare(r1._1, r2._1) < 0)
+        hashmap.map{ case (pid, kv) =>
+          kv.sortWith((r1, r2) => keyCompare(r1._1, r2._1) < 0)
+          (pid, kv)
         }
 
         val hashMapIterator = hashmap.iterator
 
-        assert(hashMapIterator.size > 0, "HashMap is empty.")
+        assert(hashMapIterator.hasNext, "HashMap is empty.")
 
         val pkvIterator = new Iterator[(Int, (Array[Byte], Array[Byte]))] {
 

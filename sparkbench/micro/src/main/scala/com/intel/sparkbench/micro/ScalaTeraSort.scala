@@ -71,23 +71,41 @@ object ScalaTeraSort {
 
     val partitioned_sorted_rdd = data.map(kv => (partitioner.getPartition(kv._1), (kv._1, kv._2)))
       .mapPartitions { iterator =>
-        val map = new mutable.HashMap[Int, ArrayBuffer[(Array[Byte], Array[Byte])]]()
+        val hashmap = new mutable.HashMap[Int, ArrayBuffer[(Array[Byte], Array[Byte])]]()
         iterator.foreach { case (pid, kv) =>
-            val arr = map.getOrElseUpdate(pid, new ArrayBuffer[(Array[Byte], Array[Byte])]())
+            val arr = hashmap.getOrElseUpdate(pid, new ArrayBuffer[(Array[Byte], Array[Byte])]())
             arr += kv
         }
 
-        map.foreach{ case (pid, kv) =>
+        hashmap.foreach{ case (pid, kv) =>
             kv.sortWith((r1, r2) => keyCompare(r1._1, r2._1) < 0)
         }
 
-        val arrBuffer = new ArrayBuffer[(Int, (Array[Byte], Array[Byte]))]()
-        map.foreach { case (pid, kvArr) =>
-            kvArr.foreach { case (k, v) =>
-                arrBuffer += ((pid, (k ,v)))
+        val hashMapIterator = hashmap.iterator
+
+        assert(hashMapIterator.size > 0, "HashMap is empty.")
+
+        val pkvIterator = new Iterator[(Int, (Array[Byte], Array[Byte]))] {
+
+          var mapRecord = hashMapIterator.next()
+          var mapRecordKey = mapRecord._1
+          var mapRecordValueIter = mapRecord._2.toIterator
+
+          override def hasNext: Boolean = hashMapIterator.hasNext || mapRecordValueIter.hasNext
+
+          override def next(): (Int, (Array[Byte], Array[Byte])) = {
+            if (mapRecordValueIter.hasNext) {
+              (mapRecordKey, mapRecordValueIter.next())
+            } else {
+              mapRecord = hashMapIterator.next()
+              mapRecordKey = mapRecord._1
+              mapRecordValueIter = mapRecord._2.toIterator
+              (mapRecordKey, mapRecordValueIter.next())
             }
+          }
         }
-        arrBuffer.toIterator
+
+        pkvIterator
       }
 
     val ordered_rdd = new TeraSortPairRDDFunctions(partitioned_sorted_rdd)

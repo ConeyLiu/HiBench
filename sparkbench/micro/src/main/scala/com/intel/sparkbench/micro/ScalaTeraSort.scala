@@ -58,8 +58,6 @@ object ScalaTeraSort {
     val reducer  = IOCommon.getProperty("hibench.default.shuffle.parallelism")
       .getOrElse((parallel / 2).toString).toInt
 
-    val nvmfEnabled = sc.getConf.getBoolean("spark.shuffle.nvme.enabled", false)
-
     val partitioner = new BaseRangePartitioner(partitions = reducer, rdd = data)
 
 //    val partitioned_sorted_rdd = data.map(kv => (partitioner.getPartition(kv._1), (kv._1, kv._2)))
@@ -86,7 +84,7 @@ object ScalaTeraSort {
 
         assert(hashMapIterator.hasNext, "HashMap is empty.")
 
-        val pkvIterator = new Iterator[(Int, (Array[Byte], Array[Byte]))] {
+        val kvIterator = new Iterator[(Array[Byte], Array[Byte])] {
 
           var mapRecord = hashMapIterator.next()
           var mapRecordKey = mapRecord._1
@@ -94,58 +92,39 @@ object ScalaTeraSort {
 
           override def hasNext: Boolean = hashMapIterator.hasNext || mapRecordValueIter.hasNext
 
-          override def next(): (Int, (Array[Byte], Array[Byte])) = {
+          override def next(): (Array[Byte], Array[Byte]) = {
             if (mapRecordValueIter.hasNext) {
-              (mapRecordKey, mapRecordValueIter.next())
+              mapRecordValueIter.next()
             } else {
               mapRecord = hashMapIterator.next()
               mapRecordKey = mapRecord._1
               mapRecordValueIter = mapRecord._2.toIterator
-              (mapRecordKey, mapRecordValueIter.next())
+              mapRecordValueIter.next()
             }
           }
         }
 
-        pkvIterator
+        kvIterator
       }
 
     val ordered_rdd = new TeraSortPairRDDFunctions(partitioned_sorted_rdd)
 
-    val hashPartitioner = new HashPartitioner(partitioner.numPartitions)
+    val grouped_rdd = ordered_rdd.groupByKey(partitioner)
 
-    val grouped_rdd = ordered_rdd.groupByKey(hashPartitioner)
-
-    if (nvmfEnabled) {
-      grouped_rdd.flatMap(_._2.toIterator)
-        .map { case (k, v) => (new Text(k), new Text(v))}
-        .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
-    } else {
-      grouped_rdd.flatMap{ tuple =>
-        val value = tuple._2.toArray
-
-        TimSort.sort(value,
-                     0,
-                     value.length,
-                     keyComparator(),
-                     new Array[(Array[Byte], Array[Byte])](value.length),
-                     value.length)
-
-        value
-      }.map{case (k, v) => (new Text(k), new Text(v))}
-        .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
-
-    }
+    grouped_rdd.flatMapValues(_.toIterator)
+      .map { case (k, v) => (new Text(k), new Text(v))}
+      .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
 
     sc.stop()
   }
 
-  def keyComparator(): Comparator[(Array[Byte], Array[Byte])] = {
-    new Comparator[(Array[Byte], Array[Byte])] {
-      override def compare(a: (Array[Byte], Array[Byte]), b: (Array[Byte], Array[Byte])): Int = {
-        keyCompare(a._1, b._1)
-      }
-    }
-  }
+//  def keyComparator(): Comparator[(Array[Byte], Array[Byte])] = {
+//    new Comparator[(Array[Byte], Array[Byte])] {
+//      override def compare(a: (Array[Byte], Array[Byte]), b: (Array[Byte], Array[Byte])): Int = {
+//        keyCompare(a._1, b._1)
+//      }
+//    }
+//  }
 
 
   def keyCompare(a: Array[Byte], b: Array[Byte]): Int = {
@@ -154,12 +133,12 @@ object ScalaTeraSort {
     if (bytesWritable1.compareTo(bytesWritable2) < 0) -1 else 1
   }
 
-  def partitionKeyCompare(a: (Int, Array[Byte]), b: (Int, Array[Byte])): Int = {
-    val partitionDiff = a._1 - b._1
-    if (partitionDiff != 0) {
-      partitionDiff
-    } else {
-      keyCompare(a._2, b._2)
-    }
-  }
+//  def partitionKeyCompare(a: (Int, Array[Byte]), b: (Int, Array[Byte])): Int = {
+//    val partitionDiff = a._1 - b._1
+//    if (partitionDiff != 0) {
+//      partitionDiff
+//    } else {
+//      keyCompare(a._2, b._2)
+//    }
+//  }
 }

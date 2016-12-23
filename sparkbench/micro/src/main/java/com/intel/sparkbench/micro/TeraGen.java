@@ -332,8 +332,8 @@ public class TeraGen extends Configured implements Tool {
         // we use 3 random numbers per a row
         rand = new RandomGenerator(rowId*3);
       }
-      key = new byte[KEY_LENGTH];
-      value = new byte[VALUE_LENGTH];
+//      key = new byte[KEY_LENGTH];
+//      value = new byte[VALUE_LENGTH];
       valueIndex = 0;
       keyIndex = 0;
       addKey();

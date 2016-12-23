@@ -17,15 +17,12 @@
 
 package com.intel.hibench.sparkbench.micro
 
-import java.util.Comparator
 
 import com.intel.hibench.sparkbench.common.IOCommon
-import com.intel.sparkbench.micro.TimSort
-import org.apache.hadoop.examples.terasort.{TeraInputFormat, TeraOutputFormat}
-import org.apache.hadoop.io.Text
-import org.apache.hadoop.io.BytesWritable
+import com.intel.sparkbench.micro.{TeraInputFormat, TeraOutputFormat}
+import org.apache.hadoop.io.{Text, WritableComparator}
 import org.apache.spark._
-import org.apache.spark.rdd._
+import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -36,7 +33,7 @@ object ScalaTeraSort {
   (rdd: RDD[(K, V)]) = new ConfigurableOrderedRDDFunctions[K, V, (K, V)](rdd)
 
   implicit def ArrayByteOrdering: Ordering[Array[Byte]] = Ordering.fromLessThan {
-    case (a, b) => (new BytesWritable(a).compareTo(new BytesWritable(b))) < 0
+    case (a, b) => innerCompare(a, b) < 0
   }
 
   def main(args: Array[String]) {
@@ -46,26 +43,21 @@ object ScalaTeraSort {
       )
       System.exit(1)
     }
-    val sparkConf = new SparkConf().setAppName("ScalaTeraSort")
-    val sc = new SparkContext(sparkConf)
-    val io = new IOCommon(sc)
+    val conf = new SparkConf()
+         .setAppName("ScalaTeraSort")
+         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 
-    //val file = io.load[String](args(0), Some("Text"))
-    val data = sc.newAPIHadoopFile[Text, Text, TeraInputFormat](args(0)).map {
-      case (k,v) => (k.copyBytes, v.copyBytes)
-    }
+    val sc = new SparkContext(conf)
+
+    val data = sc.hadoopFile[Array[Byte], Array[Byte], TeraInputFormat](args(0))
+      // If not clone, all keys are the same
+      .map(kv => (kv._1.clone(), kv._2.clone()))
+
     val parallel = sc.getConf.getInt("spark.default.parallelism", sc.defaultParallelism)
     val reducer  = IOCommon.getProperty("hibench.default.shuffle.parallelism")
       .getOrElse((parallel / 2).toString).toInt
 
     val partitioner = new BaseRangePartitioner(partitions = reducer, rdd = data)
-
-//    val partitioned_sorted_rdd = data.map(kv => (partitioner.getPartition(kv._1), (kv._1, kv._2)))
-//      .mapPartitions{ iterator =>
-//        iterator.toSeq
-//                .sortWith((r1, r2) => partitionKeyCompare((r1._1, r1._2._1), (r2._1, r2._2._1)) < 0)
-//                .toIterator
-//      }
 
     val partitioned_sorted_rdd = data.map(kv => (partitioner.getPartition(kv._1), (kv._1, kv._2)))
       .mapPartitions { iterator =>
@@ -76,7 +68,7 @@ object ScalaTeraSort {
         }
 
         hashmap.map{ case (pid, kv) =>
-          kv.sortWith((r1, r2) => keyCompare(r1._1, r2._1) < 0)
+          kv.sortWith((r1, r2) => innerCompare(r1._1, r2._1) < 0)
           (pid, kv)
         }
 
@@ -108,42 +100,13 @@ object ScalaTeraSort {
       }
 
     partitioned_sorted_rdd.sortByKeyWithPartitioner(partitioner)
-      .map{ case (k, v) => (new Text(k), new Text(v))}
-      .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
-
-    //val ordered_rdd = new TeraSortPairRDDFunctions(partitioned_sorted_rdd)
-
-    //val grouped_rdd = ordered_rdd.groupByKey(partitioner)
-
-//    grouped_rdd.flatMapValues(_.toIterator)
-//      .map { case (k, v) => (new Text(k), new Text(v))}
-//      .saveAsNewAPIHadoopFile[TeraOutputFormat](args(1))
-
+        .saveAsHadoopFile[TeraOutputFormat](args(1))
 
     sc.stop()
   }
 
-//  def keyComparator(): Comparator[(Array[Byte], Array[Byte])] = {
-//    new Comparator[(Array[Byte], Array[Byte])] {
-//      override def compare(a: (Array[Byte], Array[Byte]), b: (Array[Byte], Array[Byte])): Int = {
-//        keyCompare(a._1, b._1)
-//      }
-//    }
-//  }
-
-
-  def keyCompare(a: Array[Byte], b: Array[Byte]): Int = {
-    val bytesWritable1 = new BytesWritable(a)
-    val bytesWritable2 = new BytesWritable(b)
-    if (bytesWritable1.compareTo(bytesWritable2) < 0) -1 else 1
+  def innerCompare(a: Array[Byte], b: Array[Byte]): Int = {
+    if (a eq b) return 0
+    WritableComparator.compareBytes(a, 0, a.length, b, 0, b.length)
   }
-
-//  def partitionKeyCompare(a: (Int, Array[Byte]), b: (Int, Array[Byte])): Int = {
-//    val partitionDiff = a._1 - b._1
-//    if (partitionDiff != 0) {
-//      partitionDiff
-//    } else {
-//      keyCompare(a._2, b._2)
-//    }
-//  }
 }

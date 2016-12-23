@@ -20,12 +20,12 @@ root_dir=${current_dir}/../../../../..
 workload_config=${root_dir}/conf/workloads/micro/terasort.conf
 . "${root_dir}/bin/functions/load-bench-config.sh"
 
-enter_bench HadoopPrepareTerasort ${workload_config} ${current_dir}
+enter_bench PrepareTerasort ${workload_config} ${current_dir}
 show_bannar start
 
 rmr-hdfs $INPUT_HDFS || true
 START_TIME=`timestamp`
-run-hadoop-job ${HADOOP_EXAMPLES_JAR} teragen \
+run-hadoop-job ${root_dir}/sparkbench/micro/target/spark-micro-6.1-SNAPSHOT.jar com.intel.sparkbench.micro.TeraGen \
     -D mapreduce.job.maps=${NUM_MAPS} \
     -D mapreduce.job.reduces=${NUM_REDS} \
     ${DATASIZE} ${INPUT_HDFS}

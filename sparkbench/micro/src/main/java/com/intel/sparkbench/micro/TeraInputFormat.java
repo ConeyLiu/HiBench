@@ -19,6 +19,9 @@ package com.intel.sparkbench.micro;
  */
 
 
+import com.hadoop.compression.lzo.LzoIndex;
+import com.hadoop.compression.lzo.LzoInputFormatCommon;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
@@ -33,7 +36,7 @@ import org.apache.hadoop.util.IndexedSortable;
 import org.apache.hadoop.util.QuickSort;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.*;
 
 /**
  * An input format that reads the first 10 characters of each line as the key
@@ -41,6 +44,7 @@ import java.util.ArrayList;
  * as Text.
  */
 public class TeraInputFormat extends FileInputFormat<byte[],byte[]> {
+  private final Map<Path, LzoIndex> indexes = new HashMap<Path, LzoIndex>();
 
   static final String PARTITION_FILENAME = "_partition.lst";
   static final String SAMPLE_SIZE = "terasort.partitions.sample";
@@ -49,6 +53,35 @@ public class TeraInputFormat extends FileInputFormat<byte[],byte[]> {
 
   private static final int KEY_LENGTH = 10;
   private static final int VALUE_LENGTH = 90;
+
+  @Override
+  protected FileStatus[] listStatus(JobConf job) throws IOException {
+    List<FileStatus> files = new ArrayList<FileStatus>(Arrays.asList(super.listStatus(job)));
+
+    boolean ignoreNonLzo = LzoInputFormatCommon.getIgnoreNonLzoProperty(job);
+
+    Iterator<FileStatus> it = files.iterator();
+    while (it.hasNext()) {
+      FileStatus fileStatus = it.next();
+      Path file = fileStatus.getPath();
+
+      if (!LzoInputFormatCommon.isLzoFile(file.toString())) {
+        // Get rid of non-LZO files, unless the conf explicitly tells us to
+        // keep them.
+        // However, always skip over files that end with ".lzo.index", since
+        // they are not part of the input.
+        if (ignoreNonLzo || LzoInputFormatCommon.isLzoIndexFile(file.toString())) {
+          it.remove();
+        }
+      } else {
+        FileSystem fs = file.getFileSystem(job);
+        LzoIndex index = LzoIndex.readIndex(fs, file);
+        indexes.put(file, index);
+      }
+    }
+
+    return files.toArray(new FileStatus[] {});
+  }
 
   static class TextSampler implements IndexedSortable {
     private ArrayList<byte[]> records = new ArrayList<byte[]>();
@@ -155,26 +188,71 @@ public class TeraInputFormat extends FileInputFormat<byte[],byte[]> {
   public RecordReader<byte[], byte[]> getRecordReader(InputSplit split,
                   JobConf job,
                   Reporter reporter) throws IOException {
-    return new TeraRecordReader(job, (FileSplit) split);
+    FileSplit fileSplit = (FileSplit) split;
+    if (LzoInputFormatCommon.isLzoFile(fileSplit.getPath().toString())) {
+      reporter.setStatus(split.toString());
+      return new LzoLineRecordReader(job, (FileSplit)split);
+    } else {
+      // delegate non-LZO files to the TextInputFormat base class.
+      return new TeraRecordReader(job, (FileSplit) split);
+    }
+
   }
   @Override
-  public InputSplit[] getSplits(JobConf conf, int splits) throws IOException {
-    if (conf == lastConf) {
-      return lastResult;
+  public InputSplit[] getSplits(JobConf conf, int numSplits) throws IOException {
+    FileSplit[] splits = (FileSplit[])super.getSplits(conf, numSplits);
+    // Find new starts/ends of the filesplit that align with the LZO blocks.
+
+    List<FileSplit> result = new ArrayList<FileSplit>();
+
+    for (FileSplit fileSplit: splits) {
+      Path file = fileSplit.getPath();
+      FileSystem fs = file.getFileSystem(conf);
+
+      if (!LzoInputFormatCommon.isLzoFile(file.toString())) {
+        // non-LZO file, keep the input split as is.
+        result.add(fileSplit);
+        continue;
+      }
+
+      // LZO file, try to split if the .index file was found
+      LzoIndex index = indexes.get(file);
+      if (index == null) {
+        throw new IOException("Index not found for " + file);
+      }
+      if (index.isEmpty()) {
+        // Empty index, keep it as is.
+        result.add(fileSplit);
+        continue;
+      }
+
+      long start = fileSplit.getStart();
+      long end = start + fileSplit.getLength();
+
+      long lzoStart = index.alignSliceStartToIndex(start, end);
+      long lzoEnd = index.alignSliceEndToIndex(end, fs.getFileStatus(file).getLen());
+
+      if (lzoStart != LzoIndex.NOT_FOUND  && lzoEnd != LzoIndex.NOT_FOUND) {
+        result.add(new FileSplit(file, lzoStart, lzoEnd - lzoStart, fileSplit.getLocations()));
+      }
     }
-    lastConf = conf;
-    lastResult = super.getSplits(conf, splits);
-    return lastResult;
+
+    return result.toArray(new FileSplit[result.size()]);
   }
 
   @Override
   protected boolean isSplitable(FileSystem fs, Path filename) {
-    final CompressionCodec codec = new CompressionCodecFactory(fs.getConf()).getCodec(filename);
-    if (codec == null) {
-      return true;
-    }
+    if (LzoInputFormatCommon.isLzoFile(filename.toString())) {
+      LzoIndex index = indexes.get(filename);
+      return !index.isEmpty();
+    } else {
+      final CompressionCodec codec = new CompressionCodecFactory(fs.getConf()).getCodec(filename);
+      if (codec == null) {
+        return true;
+      }
 
-    return codec instanceof SplittableCompressionCodec;
+      return codec instanceof SplittableCompressionCodec;
+    }
   }
 
 

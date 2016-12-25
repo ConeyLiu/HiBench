@@ -57,6 +57,8 @@ object ScalaTeraSort {
     val reducer  = IOCommon.getProperty("hibench.default.shuffle.parallelism")
       .getOrElse((parallel / 2).toString).toInt
 
+    println(reducer)
+
     val partitioner = new BaseRangePartitioner(partitions = reducer, rdd = data)
 
     val partitioned_sorted_rdd = data.map(kv => (partitioner.getPartition(kv._1), (kv._1, kv._2)))

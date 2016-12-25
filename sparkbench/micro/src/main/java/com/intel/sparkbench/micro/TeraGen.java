@@ -250,7 +250,7 @@ public class TeraGen extends Configured implements Tool {
   public static class SortGenMapper extends MapReduceBase
     implements Mapper<LongWritable, NullWritable, byte[], byte[]> {
     private final int KEY_LENGTH = 10;
-    private final int VALUE_LENGTH = 90;
+    private final int VALUE_LENGTH = 88;
 
     private byte[] key = new byte[KEY_LENGTH];
     private byte[] value = new byte[VALUE_LENGTH];
@@ -351,7 +351,7 @@ public class TeraGen extends Configured implements Tool {
     setNumberOfRows(job, Long.parseLong(args[0]));
     FileOutputFormat.setOutputPath(job, new Path(args[1]));
 //    FileOutputFormat.setCompressOutput(job, true);
-//    FileOutputFormat.setOutputCompressorClass(job, Lz4Codec.class);
+//    FileOutputFormat.setOutputCompressorClass(job,);
     job.setJobName("TeraGen");
     job.setJarByClass(TeraGen.class);
     job.setMapperClass(SortGenMapper.class);

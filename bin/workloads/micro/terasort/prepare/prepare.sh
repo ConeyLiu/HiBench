@@ -25,7 +25,7 @@ show_bannar start
 
 rmr-hdfs $INPUT_HDFS || true
 START_TIME=`timestamp`
-run-hadoop-job ${root_dir}/sparkbench/micro/target/spark-micro-6.1-SNAPSHOT.jar com.intel.sparkbench.micro.TeraGen \
+run-hadoop-job ${root_dir}/sparkbench/micro/target/sparkbench-micro-6.1-SNAPSHOT.jar com.intel.sparkbench.micro.TeraGen \
     -D mapreduce.job.maps=${NUM_MAPS} \
     -D mapreduce.job.reduces=${NUM_REDS} \
     ${DATASIZE} ${INPUT_HDFS}

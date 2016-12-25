@@ -50,7 +50,6 @@ class BaseRangePartitioner [K : Ordering : ClassTag, V]
     } else {
       val requiredPartitions =
         if (rdd.partitions.size > partitions) partitions else rdd.partitions.size
-      println(rdd.partitions.size + " " + partitions + " " + requiredPartitions)
       val samplesPerPartition = math.min(partitions / requiredPartitions * 20, 1e3).toInt
       val partitionStep = rdd.partitions.size / requiredPartitions
 

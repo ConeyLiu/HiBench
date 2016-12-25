@@ -31,5 +31,8 @@ run-hadoop-job ${root_dir}/sparkbench/micro/target/sparkbench-micro-6.1-SNAPSHOT
     ${DATASIZE} ${INPUT_HDFS}
 END_TIME=`timestamp`
 
+run-hadoop-job ${root_dir}/sparkbench/micro/target/sparkbench-micro-6.1-SNAPSHOT.jar \
+     com.hadoop.compression.lzo.DistributedLzoIndexer ${INPUT_HDFS}
+
 show_bannar finish
 leave_bench

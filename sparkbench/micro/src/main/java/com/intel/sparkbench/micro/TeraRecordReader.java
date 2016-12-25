@@ -48,6 +48,7 @@ public class TeraRecordReader implements RecordReader<byte[],byte[]> {
 //        key.set(bytes, 0, KEY_LENGTH);
 //        value.set(bytes, KEY_LENGTH, line.getLength() - KEY_LENGTH);
         System.arraycopy(bytes, 0, key, 0, KEY_LENGTH);
+        System.out.println("----->" + bytes.length + " : " + (line.getLength() - KEY_LENGTH));
         System.arraycopy(bytes, KEY_LENGTH, value, 0, line.getLength() - KEY_LENGTH);
       }
       return true;

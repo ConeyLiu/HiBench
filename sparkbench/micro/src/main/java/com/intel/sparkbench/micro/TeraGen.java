@@ -24,7 +24,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.WritableUtils;
-import org.apache.hadoop.io.compress.BZip2Codec;
 import org.apache.hadoop.io.compress.Lz4Codec;
 import org.apache.hadoop.mapred.*;
 import org.apache.hadoop.util.Tool;
@@ -351,8 +350,8 @@ public class TeraGen extends Configured implements Tool {
     JobConf job = (JobConf) getConf();
     setNumberOfRows(job, Long.parseLong(args[0]));
     FileOutputFormat.setOutputPath(job, new Path(args[1]));
-    FileOutputFormat.setCompressOutput(job, true);
-    FileOutputFormat.setOutputCompressorClass(job, Lz4Codec.class);
+//    FileOutputFormat.setCompressOutput(job, true);
+//    FileOutputFormat.setOutputCompressorClass(job, Lz4Codec.class);
     job.setJobName("TeraGen");
     job.setJarByClass(TeraGen.class);
     job.setMapperClass(SortGenMapper.class);

@@ -18,6 +18,7 @@
 package com.intel.sparkbench.micro
 
 import com.intel.hibench.sparkbench.common.IOCommon
+import org.apache.hadoop.io.Text
 import org.apache.spark.{SparkConf, SparkContext}
 
 
@@ -30,20 +31,23 @@ object ScalaRepartion {
       System.exit(1)
     }
     val conf = new SparkConf().setAppName("ScalaRepartition")
+    conf.registerKryoClasses(Array(classOf[org.apache.hadoop.io.Text]))
     val sc = new SparkContext(conf)
 
     //val file = io.load[String](args(0), Some("Text"))
     val data = sc.
       hadoopFile[Array[Byte], Array[Byte], TeraInputFormat](args(0))
       .map { case (k, v) =>
-        (k.clone(), v.clone())
+        (new Text(k), new Text(v))
       }
 
     val parallel = sc.getConf.getInt("spark.default.parallelism", sc.defaultParallelism)
     val reducer  = IOCommon.getProperty("hibench.default.shuffle.parallelism")
       .getOrElse((parallel / 2).toString).toInt
 
-    data.repartition(reducer).saveAsHadoopFile[TeraOutputFormat](args(1))
+    data.repartition(reducer).map { case (k, v) =>
+      (k.copyBytes(), v.copyBytes())
+    }saveAsHadoopFile[TeraOutputFormat](args(1))
 
     sc.stop()
   }
